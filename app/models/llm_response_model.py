@@ -12,6 +12,9 @@ class VideoText(BaseModel):
     video_id: str = Field(..., description="Video ID")
     paragraph: list[str] = Field(..., description="List of paragraphs in the video")
     paragraph_id: str = Field(..., description="Paragraph ID")
+    input_tokens: int = Field(..., description="Input tokens used")
+    output_tokens: int = Field(..., description="Output tokens used")
+    total_tokens: int = Field(..., description="Total tokens used")
 
 
 class SkillsModel(BaseModel):
@@ -60,7 +63,7 @@ class QuizModel(BaseModel):
     question_id: str = Field(..., description="uuid.uuid4() question ID")
     answer: List[AnswerModel] = Field(..., description="List of answer options [A, B, C, D] or [True, False]")
     correct_answer: str = Field(..., description="Correct answer")
-    correct_answer_id: str = Field(..., description="uuid.uuid4() correct answer ID")
+    # correct_answer_id: str = Field(..., description="uuid.uuid4() correct answer ID")
     alternative_questions: List[AlternativeQuestion] = Field(..., description="List of alternative questions")
     question_skills_and_objective: List[QuizSkillsAndObjectiveModel] = Field(...,
                                                                              description="List of skills related to the question")
@@ -88,3 +91,9 @@ class ParagraphWithSkills(BaseModel):
 class SimplifyResponse(BaseModel):
     video: str = Field(..., description="Video text")
     paragraph: list[ParagraphWithSkills] = Field(..., description="List of simplified paragraphs with related skills")
+
+class LearningKitResponse(BaseModel):
+    results: List[SimplifyResponse]
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int

@@ -1,7 +1,7 @@
 import os
 import uuid
 from copy import copy
-from typing import List
+from typing import List, Any
 
 from app.client.llm_client import OpenAITextProcessor
 from app.client.vector_db import QdrantDBClient
@@ -16,10 +16,11 @@ llm_client = OpenAITextProcessor(os.getenv("OPENAI_API_KEY"), model="gpt-4o", ma
 vectordb_client = QdrantDBClient(host='localhost', port=6333)
 
 
-def chunk_course(videos) -> List[VideoText]:
+def chunk_course(videos) -> dict[str, int | list[VideoText] | Any]:
     input_tokens = 0
     output_tokens = 0
     total_tokens = 0
+
     # Submit the sections to the thread pool with indices to preserve order
     futures = {i: llm_client.process_video(section) for i, section in enumerate(videos)}
 
@@ -27,12 +28,26 @@ def chunk_course(videos) -> List[VideoText]:
     results: List[VideoText] = [None] * len(videos)
     for i, future in futures.items():
         result = future.result()
+        input_tokens += result.input_tokens
+        output_tokens += result.output_tokens
+        total_tokens += result.total_tokens
         results[i] = result
-    return results
 
+    print(f"Total input tokens: {input_tokens}")
+    print(f"Total output tokens: {output_tokens}")
+    print(f"Total tokens: {total_tokens}")
+    return {
+        "results": results,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens
+    }
 
-def simplify_paragraph(videos: List[VideoText]) -> List[SimplifyResponseSchema]:
+def simplify_paragraph(videos: List[VideoText]) -> dict[str, int | list[SimplifyResponseSchema] | Any]:
     try:
+        input_tokens = 0
+        output_tokens = 0
+        total_tokens = 0
         simplify_results: List[SimplifyResponseSchema] = []
 
         print(f"Starting simplification for {len(videos)} videos...\n")
@@ -59,9 +74,12 @@ def simplify_paragraph(videos: List[VideoText]) -> List[SimplifyResponseSchema]:
 
             for i, future in simplify_futures.items():
                 print(f"🧠 Simplifying paragraph {i + 1}/{len(paragraph_list)}")
-                simplified = future.result()
+                simplified, in_tok, out_tok, total_tok = future.result()
 
-                # Debugging: check what the result from simplify looks like
+                input_tokens += in_tok
+                output_tokens += out_tok
+                total_tokens += total_tok
+
                 print(f"🔍 Simplified result {i + 1}: {simplified}")
                 simplified = simplified.model_dump()
                 simplified["paragraph_id"] = video.paragraph_id
@@ -71,9 +89,7 @@ def simplify_paragraph(videos: List[VideoText]) -> List[SimplifyResponseSchema]:
                 simplified["simplify3_id"] = str(uuid.uuid4())
                 simplified_results[i] = TextProcessingSchema(**simplified)
 
-                # Ensure that you are accessing the right field (e.g., simplified.text or simplified.simplify1)
-                simplified_text = simplified["simplify1"]  # You can choose simplify1, simplify2, etc.
-
+                simplified_text = simplified["simplify1"]
                 print(f"🧲 Getting similar skills for simplified text {i + 1}")
                 skill_results[i] = get_similar_skills(simplified_text, video.paragraph_id)
                 objective_results[i] = get_similar_objectives(simplified_text, video.paragraph_id)
@@ -99,12 +115,19 @@ def simplify_paragraph(videos: List[VideoText]) -> List[SimplifyResponseSchema]:
             print(f"✅ Finished processing video {video_index + 1}\n")
 
         print("🎉 All videos processed.")
-        return simplify_results
+        print(f"📊 Total tokens used → Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+
+        return {
+            "results": simplify_results,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+        }
+
 
     except Exception as e:
         print("❌ Error occurred:", str(e))
         raise e
-
 
 def get_similar_skills(paragraph: str, paragraph_id: str) -> list[SkillsModel]:
     try:
@@ -153,11 +176,16 @@ def get_similar_objectives(paragraph: str, paragraph_id: str) -> list[ObjectiveM
         raise e
 
 
-def generate_quiz(simplify_results: List[SimplifyResponseSchema]) -> List[SimplifyResponse]:
+def generate_quiz(simplify_results: List[SimplifyResponseSchema]) -> dict:
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+
     for video in simplify_results:
         for paragraph in video.paragraph:
             skills_list = []
             objective_list = []
+
             for skills in paragraph.skills:
                 skills_list.append({
                     "skill_id": skills.skill_id,
@@ -168,41 +196,49 @@ def generate_quiz(simplify_results: List[SimplifyResponseSchema]) -> List[Simpli
                     "objective_id": objective.objective_id,
                     "objective_en": objective.objective_en,
                 })
+
             print(f"📝 Generating quiz for paragraph: {paragraph.simplified.original_with_tashkeel}")
 
-            # Assuming this returns a string or structured quiz data
-            paragraph_with_skills = ("# Available skills: " + str(skills_list) + "\n\n" +
-                                    "# Available objectives: " + str(objective_list) + "\n\n" +
-                                     "# Paragraph: " + paragraph.simplified.original_with_tashkeel + "\n")
-            quiz = llm_client.generate_quiz(paragraph_with_skills, paragraph_id=paragraph.paragraph_id)
+            paragraph_with_skills = (
+                "# Available skills: " + str(skills_list) + "\n\n" +
+                "# Available objectives: " + str(objective_list) + "\n\n" +
+                "# Paragraph: " + paragraph.simplified.original_with_tashkeel + "\n"
+            )
+
+            quiz, in_tokens, out_tokens, tokens = llm_client.generate_quiz(paragraph_with_skills, paragraph_id=paragraph.paragraph_id)
+
+            input_tokens += in_tokens
+            output_tokens += out_tokens
+            total_tokens += tokens
+
             quiz_with_paragraph_id = []
+
             for q in quiz:
                 q.question_id = str(uuid.uuid4())
-                # correct_id = copy(q.correct_answer_id)
-                # q.correct_answer_id = str(uuid.uuid4())
+
                 for skills in q.question_skills_and_objective:
                     skills.question_id = q.question_id
                 for ans in q.answer:
-                    # if ans.answer_id == correct_id:
-                    #     ans.answer_id = q.correct_answer_id
-                    # else:
-                    #     ans.answer_id = str(uuid.uuid4())
                     ans.question_id = q.question_id
                 for alter in q.alternative_questions:
                     alter.question_id = str(uuid.uuid4())
-                    # correct_id = copy(alter.correct_answer_id)
-                    # alter.correct_answer_id = str(uuid.uuid4())
                     for ans in alter.answer:
-                        # if ans.answer_id == correct_id:
-                        #     ans.answer_id = alter.correct_answer_id
-                        # else:
-                        #     ans.answer_id = str(uuid.uuid4())
                         ans.question_id = alter.question_id
+
                 q = q.model_dump()
                 q["paragraph_id"] = paragraph.paragraph_id
                 quiz_with_paragraph_id.append(q)
+
             print(f"✅ Quiz generated: {quiz}")
             paragraph.quiz = quiz_with_paragraph_id
-    return simplify_results
+
+    print(f"📊 Quiz Token Usage → Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+
+    return {
+        "results": simplify_results,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
 
 

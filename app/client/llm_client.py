@@ -1,12 +1,12 @@
 import os
 import uuid
-from typing import Optional, List
+from typing import Optional
 
 from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor
 
-from app.contant_manager import (chunking_prompt, simplify_prompt,
-                                 EMBEDDING_MODEL, question_generation_prompt)
+from app.contant_manager import (chunking_prompt_ar, simplify_prompt_ar,
+                                 EMBEDDING_MODEL, question_generation_prompt_ar)
 from app.models.llm_response_model import (ChunkResults, TextProcessingResult,
                                            VideoText, QuizModel, QuizResponse)
 
@@ -32,7 +32,7 @@ class OpenAITextProcessor:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": chunking_prompt},
+                    {"role": "system", "content": chunking_prompt_ar},
                     {"role": "user", "content": video}
                 ],
                 temperature=0,
@@ -44,7 +44,10 @@ class OpenAITextProcessor:
                 video=video,
                 video_id=str(video_id),
                 paragraph=response.choices[0].message.parsed.chunks,
-                paragraph_id=str(paragraph_id)
+                paragraph_id=str(paragraph_id),
+                input_tokens=response.usage.prompt_tokens,
+                output_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens
             )
         except Exception as e:
             raise e
@@ -53,35 +56,41 @@ class OpenAITextProcessor:
         """Submit the task to the thread pool for asynchronous execution"""
         return self.executor.submit(self.process_video_sync, video)
 
-    def simplify(self, paragraph: str) -> TextProcessingResult:
+    def simplify(self, paragraph: str) -> tuple[TextProcessingResult, int, int, int]:
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": paragraph},
-                    {"role": "user", "content": simplify_prompt}
+                    {"role": "user", "content": simplify_prompt_ar}
                 ],
                 temperature=0,
                 response_format=TextProcessingResult
             )
-            tokens = response.usage.total_tokens
-            return response.choices[0].message.parsed
+            return (
+                response.choices[0].message.parsed,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                response.usage.total_tokens,
+            )
         except Exception as e:
             raise e
 
-    def generate_quiz(self, paragraph_content, paragraph_id: str) -> list[QuizModel]:
+    def generate_quiz(self, paragraph_content, paragraph_id: str) -> tuple[list[QuizModel], int, int, int]:
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": question_generation_prompt},
+                    {"role": "system", "content": question_generation_prompt_ar},
                     {"role": "user", "content": paragraph_content}
                 ],
                 temperature=0,
                 response_format=QuizResponse
             )
-            return response.choices[0].message.parsed.quiz
+            tokens = response.usage.total_tokens
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            return response.choices[0].message.parsed.quiz, input_tokens, output_tokens, tokens
         except Exception as e:
             raise e
-
 

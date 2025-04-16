@@ -24,67 +24,71 @@ vectordb_client = QdrantDBClient(
         port=6333
     )
 #
-#
 file_path = 'Skills.xlsx'
 
 # Read the Excel file into a pandas DataFrame
 df = pd.read_excel(file_path)
 
-print("Columns in the file:", df.columns)
+def process_skills():
+    print("Columns in the file:", df.columns)
+    # Clean the column names by stripping leading/trailing spaces
+    df.columns = df.columns.str.strip()
+    for index, row in df.iterrows():
+        arabic_text = row['Skills_ar']
+        english_text = row['Skills']
+        if pd.isna(english_text):
+            continue
+        embed = client.embeddings.create(
+                            input=arabic_text,
+                            model=EMBEDDING_MODEL
+                        )
+        print('*********',embed.data[0].embedding)
+        vectordb_client.insert_point(
+            collection_name='skills',
+            uuid=str(uuid.uuid4()),
+            vector=embed.data[0].embedding,
+            payload={
+                'skill_en': english_text,
+                'skill_ar': arabic_text
+            }
+        )
 
-# Clean the column names by stripping leading/trailing spaces
-df.columns = df.columns.str.strip()
+def process_objective():
+    print("Columns in the file:", df.columns)
 
-for index, row in df.iterrows():
-    english_text = row['Skills']
-    if pd.isna(english_text):
-        continue
-    embed = client.embeddings.create(
-                        input=english_text,
-                        model=EMBEDDING_MODEL
-                    )
-    print('*********',embed.data[0].embedding)
-    vectordb_client.insert_point(
-        collection_name='skills',
-        uuid=str(uuid.uuid4()),
-        vector=embed.data[0].embedding,
-        payload={
-            'skill_en': english_text,
-        }
-    )
+    # Clean the column names by stripping leading/trailing spaces
+    df.columns = df.columns.str.strip()
 
+    for index, row in df.iterrows():
+        english_text = row['English Objectives']
+        arabic_text = row['Arabic Objectives']
+        if pd.isna(english_text):
+            continue
+        embed = client.embeddings.create(
+                            input=arabic_text,
+                            model=EMBEDDING_MODEL
+                        )
+        print('*********',embed.data[0].embedding)
+        vectordb_client.insert_point(
+            collection_name='objective',
+            uuid=str(uuid.uuid4()),
+            vector=embed.data[0].embedding,
+            payload={
+                'objective_en': english_text,
+                'objective_ar': arabic_text
+            }
+        )
 
-# # Print column names to check for any inconsistencies
-# print("Columns in the file:", df.columns)
-#
-# # Clean the column names by stripping leading/trailing spaces
-# df.columns = df.columns.str.strip()
-#
-# for index, row in df.iterrows():
-#     english_text = row['English Objectives']
-#     arabic_text = row['Arabic Objectives']
-#     if pd.isna(english_text):
-#         continue
-#     embed = client.embeddings.create(
-#                         input=english_text,
-#                         model=EMBEDDING_MODEL
-#                     )
-#     print('*********',embed.data[0].embedding)
-#     vectordb_client.insert_point(
-#         collection_name='objective',
-#         uuid=str(uuid.uuid4()),
-#         vector=embed.data[0].embedding,
-#         payload={
-#             'objective_en': english_text,
-#             'objective_ar': arabic_text
-#         }
-#     )
+process_skills()
+process_objective()
 
-#
-# # # #
+# # #-----------------
+# vectordb_client.create_collection(collection_name='objective',
+#                                   collection_size=1536)
 # vectordb_client.create_collection(collection_name='skills',
 #                                   collection_size=1536)
 
+# -----------------------------------------------------------------
 # response = client.embeddings.create(
 #                     input=skill,
 #                     model=EMBEDDING_MODEL
