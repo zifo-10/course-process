@@ -37,7 +37,7 @@ class OpenAITextProcessor:
         except Exception as e:
             raise e
 
-    def simplify(self, paragraph: str) -> SimplifyResponse | None:
+    def simplify(self, paragraph: str, language: str) -> SimplifyResponse | None:
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
@@ -48,7 +48,7 @@ class OpenAITextProcessor:
                     ),
                     ChatCompletionUserMessageParam(
                         role="user",
-                        content=f"##Script: {paragraph}\n##\n"
+                        content=f"##Script: {paragraph}\n##\n##Answer in {language} language:\n##\n"
                     )
                 ],
                 temperature=0,
@@ -58,7 +58,7 @@ class OpenAITextProcessor:
         except Exception as e:
             raise e
 
-    def generate_quiz(self, paragraph_content, skills: list, objective: list) -> QuizResponse:
+    def generate_quiz(self, paragraph_content, skills: list, objective: list, language: str) -> QuizResponse:
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
@@ -69,7 +69,9 @@ class OpenAITextProcessor:
                     ),
                     ChatCompletionUserMessageParam(
                         role="user",
-                        content=f"##Script: {paragraph_content}\n##Skills: {skills}\n##Objectives: {objective}\n##\n"
+                        content=f"##Script: {paragraph_content}\n"
+                                f"##Skills: {skills}\n##Objectives: {objective}\n##\n"
+                                f"##Answer in {language} language:\n##\n"
                     )
                 ],
                 temperature=0,

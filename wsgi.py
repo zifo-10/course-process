@@ -14,10 +14,10 @@ app = FastAPI()
 async def process_video(process_video_request: VideoRequestSchema) -> List[QuizResults]:
     try:
         # Generate paragraph
-        paragraph_list = get_paragraph(process_video_request)
-        simplify = simplify_paragraph_v1(paragraph_list)
-        # Generate quiz
-        quiz = generate_quiz(simplify)
+        paragraph_list = await get_paragraph(process_video_request)
+        simplify = await simplify_paragraph_v1(paragraph_list)
+        quiz = await generate_quiz(simplify)
         return quiz
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
