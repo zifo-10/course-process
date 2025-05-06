@@ -1,99 +1,59 @@
-from typing import List, Optional, Dict
+import uuid
+from typing import List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-
-class ChunkResults(BaseModel):
-    chunks: list[str]
-
-
-class VideoText(BaseModel):
-    video: str = Field(..., description="Video text")
-    video_id: str = Field(..., description="Video ID")
-    paragraph: list[str] = Field(..., description="List of paragraphs in the video")
-    paragraph_id: str = Field(..., description="Paragraph ID")
-    input_tokens: int = Field(..., description="Input tokens used")
-    output_tokens: int = Field(..., description="Output tokens used")
-    total_tokens: int = Field(..., description="Total tokens used")
+from app.schema.video_schema import MetaDataSchema
 
 
-class SkillsModel(BaseModel):
-    skill_en: str = Field(..., description="Skill in English")
-    skill_id: str = Field(..., description="Skill ID")
-    paragraph_id: str = Field(..., description="Paragraph ID")
+class ParagraphMetaData(BaseModel):
+    paragraph: str = Field(..., description="Paragraph text")
+    related_skills: List[MetaDataSchema] = Field(..., description="List of skills related to the paragraph")
+    related_objectives: List[MetaDataSchema] = Field(..., description="List of objectives related to the paragraph")
 
 
-class ObjectiveModel(BaseModel):
-    objective_en: str = Field(..., description="Objective in English")
-    objective_id: str = Field(..., description="Objective ID")
-    paragraph_id: str = Field(..., description="Paragraph ID")
+class ParagraphResponse(BaseModel):
+    paragraph: List[ParagraphMetaData] = Field(..., description="List of paragraphs in the video")
 
 
-class TextProcessingResult(BaseModel):
-    original_with_tashkeel: str = Field(..., description="Corrected paragraph with tashkeel")
-    simplify1: str = Field(..., description="Basic explanation with tashkeel")
+class SimplifyResponse(BaseModel):
+    simplify1: str = Field(..., description="Basic explanation")
     simplify2: str = Field(..., description="More simplified explanation")
     simplify3: str = Field(..., description="Child-friendly explanation")
 
-class AnswerModel(BaseModel):
-    question_id: str = Field(..., description="The question ID")
-    answer: str = Field(..., description="Answer option")
-    # answer_id: str = Field(..., description="uuid.uuid4() answer ID")
 
 class AlternativeQuestion(BaseModel):
     question: str = Field(..., description="Alternative question")
-    question_id: str = Field(..., description="uuid.uuid4() alternative question ID")
-    answer: List[AnswerModel] = Field(..., description="List of answer options [A, B, C, D] or [True, False]")
+    question_id: str = Field(default_factory=lambda: str(uuid.uuid4()),
+                             description="Unique UUID for the alternative question")
+    options: List[str] = Field(..., description="List of answer options [A, B, C, D] or [True, False]")
     correct_answer: str = Field(..., description="Correct answer")
-    # correct_answer_id: str = Field(..., description="uuid.uuid4() correct answer ID")
+
+    @model_validator(mode='before')
+    def generate_question_id(cls, values):
+        # Ensure that question_id is set if not provided
+        if 'question_id' not in values:
+            values['question_id'] = str(uuid.uuid4())
+        return values
 
 
-class QuizSkillsAndObjectiveModel(BaseModel):
-    question_id: str = Field(..., description="The question ID")
-    skill_en: str = Field(..., description="Skill in English")
-    skill_id: str = Field(..., description="Skill ID")
-    objective_en: str = Field(..., description="Objective in English")
-    objective_id: str = Field(..., description="Objective ID")
-
-
-
-
-class QuizModel(BaseModel):
+class QuizMetaData(BaseModel):
     question: str = Field(..., description="Quiz question")
-    question_id: str = Field(..., description="uuid.uuid4() question ID")
-    answer: List[AnswerModel] = Field(..., description="List of answer options [A, B, C, D] or [True, False]")
+    question_id: str = Field(default_factory=lambda: str(uuid.uuid4()),
+                             description="Unique UUID for the alternative question")
+    options: List[str] = Field(..., description="List of quiz responses")
     correct_answer: str = Field(..., description="Correct answer")
-    # correct_answer_id: str = Field(..., description="uuid.uuid4() correct answer ID")
+    related_skills: List[MetaDataSchema] = Field(..., description="List of skills related to the quiz")
+    related_objectives: List[MetaDataSchema] = Field(..., description="List of objectives related to the quiz")
     alternative_questions: List[AlternativeQuestion] = Field(..., description="List of alternative questions")
-    question_skills_and_objective: List[QuizSkillsAndObjectiveModel] = Field(...,
-                                                                             description="List of skills related to the question")
+
+    @model_validator(mode='before')
+    def generate_question_id(cls, values):
+        # Ensure that question_id is set if not provided
+        if 'question_id' not in values:
+            values['question_id'] = str(uuid.uuid4())
+        return values
+
 
 class QuizResponse(BaseModel):
-    quiz: List[QuizModel] = Field(..., description="Generated quiz for the paragraph")
-
-
-class TextProcessingSchema(TextProcessingResult):
-    paragraph_id: str = Field(..., description="Paragraph ID")
-    original_with_tashkeel_id: str = Field(..., description="Original paragraph with tashkeel ID")
-    simplify1_id: str = Field(..., description="Basic explanation with tashkeel")
-    simplify2_id: str = Field(..., description="More simplified explanation")
-    simplify3_id: str = Field(..., description="Child-friendly explanation")
-
-
-class ParagraphWithSkills(BaseModel):
-    paragraph_id: str = Field(..., description="Paragraph ID")
-    simplified: TextProcessingSchema
-    skills: List[SkillsModel]
-    objectives: List[ObjectiveModel]
-    # quiz: Optional[List[QuizModel]] = Field(None, description="Generated quiz for the paragraph")
-    quiz: Optional[List[Dict]] = Field(None, description="Generated quiz for the paragraph")
-
-class SimplifyResponse(BaseModel):
-    video: str = Field(..., description="Video text")
-    paragraph: list[ParagraphWithSkills] = Field(..., description="List of simplified paragraphs with related skills")
-
-class LearningKitResponse(BaseModel):
-    results: List[SimplifyResponse]
-    total_input_tokens: int
-    total_output_tokens: int
-    total_tokens: int
+    quiz: List[QuizMetaData] = Field(..., description="Generated quiz for the paragraph")

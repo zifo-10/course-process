@@ -1,0 +1,17 @@
+import uuid
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class MetaDataSchema(BaseModel):
+    name: str = Field(..., description="Skill name")
+    id: str = Field(..., description="Skill ID")
+
+
+class VideoRequestSchema(BaseModel):
+    video: str = Field(..., description="Video URL or path to the video file")
+    video_id: Optional[str] = Field(uuid.uuid4(), description="Video ID")
+    skills: List[MetaDataSchema] = Field(..., description="List of skills associated with the video")
+    objective: List[MetaDataSchema] = Field(..., description="Objective of the video")
+    language: str = Field(..., description="Language of the video")
