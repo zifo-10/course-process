@@ -57,7 +57,7 @@ def simplify_paragraph_v1(paragraph: List[ProcessedParagraph]) -> List[SimplifyR
         raise e
 
 
-def generate_quiz(paragraph: List[SimplifyResults]):
+def generate_quiz(paragraph: List[SimplifyResults]) -> List[QuizResults]:
     try:
         quiz_result_list = []
         for paragraph in paragraph:
