@@ -5,7 +5,8 @@ from typing import Optional
 from openai import OpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
-from app.contant_manager import paragraph_generator, simplify_prompt, question_generation_prompt
+from app.contant_manager import paragraph_generator, simplify_prompt, question_generation_prompt, paragraph_level, \
+    EMBEDDING_MODEL
 from app.models.llm_response_model import ParagraphResponse, SimplifyResponse, QuizResponse
 
 
@@ -16,7 +17,15 @@ class OpenAITextProcessor:
         self.client = OpenAI(api_key=self.api_key)
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
-    def get_paragraph(self, video: str, skills: list, objective: list) -> ParagraphResponse | None:
+    def get_embed(self, arabic_text: str):
+        embed = self.client.embeddings.create(
+            input=arabic_text,
+            model=EMBEDDING_MODEL
+        )
+
+        return embed.data[0].embedding
+
+    def get_paragraph(self, video: str, objective: list) -> ParagraphResponse | None:
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
@@ -27,7 +36,7 @@ class OpenAITextProcessor:
                     ),
                     ChatCompletionUserMessageParam(
                         role="user",
-                        content=f"##Script: {video}\n##Skills: {skills}\n##Objectives: {objective}\n##\n"
+                        content=f"##Script: {video}\n##Paragraph Level: {paragraph_level}\n##Objectives: {objective}\n##\n"
                     )
                 ],
                 temperature=0,

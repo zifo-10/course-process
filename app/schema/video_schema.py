@@ -12,6 +12,5 @@ class MetaDataSchema(BaseModel):
 class VideoRequestSchema(BaseModel):
     video: str = Field(..., description="Video URL or path to the video file")
     video_id: Optional[str] = Field(uuid.uuid4(), description="Video ID")
-    skills: List[MetaDataSchema] = Field(..., description="List of skills associated with the video")
     objective: List[MetaDataSchema] = Field(..., description="List of objectives associated with the video")
     language: str = Field(..., description="Language of the video")

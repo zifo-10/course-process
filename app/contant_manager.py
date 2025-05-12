@@ -1,12 +1,14 @@
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 paragraph_generator = """
-You are a helpful assistant specialized in processing video scripts. You will be provided with a script, along with a list of associated skills and learning objectives.
+You are a helpful assistant specialized in processing video scripts. You will be provided with a script, along with a list of associated objectives and levels list.
 
 Your task is to:
 1. Break the script into coherent and meaningful paragraphs or chunks, guided by both semantic structure and length.
-2. Assign relevant skills and objectives to each resulting chunk based on its content.
-3. Ensure that no paragraph exceeds 150 words.
+2. Assign relevant objectives to each resulting chunk based on its content.
+3. For each paragraph, extract the first and last words to create a metadata object.
+4. For each paragraph, assign paragraph levels based on the provided levels list
+5. Ensure that no paragraph exceeds 150 words.
 
 Detailed Guidelines:
 - If a paragraph exceeds 150 words:
@@ -21,7 +23,7 @@ Detailed Guidelines:
 
 Important Notes:
 - Prioritize clarity, coherence, and fidelity to the original script.
-- When assigning skills and objectives, ensure they are directly relevant and specific to the content of each paragraph.
+- When assigning objectives, ensure they are directly relevant and specific to the content of each paragraph.
 """
 
 simplify_prompt = """
@@ -79,9 +81,12 @@ You are an expert Analyze the given video script and generate assessment questio
     - Each must include a **clear, factual answer**.
     - Questions should be **standalone**, written in **grammatically correct**.
     - Focus on **facts, statistics, and key ideas**—avoid assumptions.
+    - For each question add question level from 1 to 6 (1 being the easiest and 6 being the most difficult).
+    - Tag all question with `post_assessment: true`.
 
 2. **Alternative Questions**:
     - For each question, create **2 alternative versions**.
+    - Tag one of the alternative questions with `post_assessment: false`.
     - Each version must:
         - Test the same concept differently.
         - Use **distinct phrasing and options** (where applicable).
@@ -101,8 +106,20 @@ You are an expert Analyze the given video script and generate assessment questio
     - If you include such phrases, the output will be invalid.
 
 📌 Final Instructions:
+    - Some question will be used for pre-assessment, another for post-assessment.
+    - Tag 80% of questions with `post_assessment: true`, 20% with `post_assessment: false`.
     - Be slightly creative, but remain accurate and fully grounded in the content.
     - Exclude any questions about the training or course itself.
     - Use concise, factual choices for MCQs.
     - If the question is True/False, **do not begin it with "True or False:"** — just ask the question directly.
 """
+
+paragraph_level = [
+    {"id": "E591A6CA-ED9D-41C7-BADB-FA8527B6EE94", "name": "Difficult"},
+    {"id": "D6FBF1C5-0415-40AA-A2E4-34A97EF6400D", "name": "Moderate"},
+    {"id": "9526FA09-C4FC-49C6-B396-309E6BB772EA", "name": "Expert"},
+    {"id": "D33AEAA9-9F05-4D71-AF2D-17514B2E7A4C", "name": "Very Difficult"},
+    {"id": "4403B86C-0322-4D5A-83CB-51E22F9AF7AF", "name": "Very Easy"},
+    {"id": "E8946491-061B-48C6-9A43-C43184C73E8C", "name": "Easy"}
+]
+

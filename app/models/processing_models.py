@@ -9,20 +9,32 @@ from app.schema.video_schema import MetaDataSchema
 
 class ProcessedParagraph(BaseModel):
     video_id: Optional[str] = Field(uuid.uuid4(), description="Video ID")
-    skills: List[MetaDataSchema] = Field(..., description="List of skills associated with the video")
     objective: List[MetaDataSchema] = Field(..., description="Objective of the video")
     language: str = Field(..., description="Language of the video")
     paragraph_id: str
     paragraph: str = Field(..., description="Paragraph text")
+    paragraph_level: MetaDataSchema = Field(..., description="Level of the paragraph")
+    start_word: str = Field(..., description="Start word of the paragraph")
+    end_word: str = Field(..., description="End word of the paragraph")
 
 
-class SimplifyResults(ProcessedParagraph):
+class ProcessedParagraphWithSkills(ProcessedParagraph):
+    skills: List[MetaDataSchema] = Field(..., description="List of skills related to the paragraph")
+
+
+class SimplifyResults(ProcessedParagraphWithSkills):
     simplify1_id: str
     simplify1: str = Field(..., description="Basic explanation")
+    simplify1_first_word: str = Field(..., description="First word of the simplification")
+    simplify1_last_word: str = Field(..., description="Last word of the simplification")
     simplify2_id: str
     simplify2: str = Field(..., description="More simplified explanation")
+    simplify2_first_word: str = Field(..., description="First word of the simplification")
+    simplify2_last_word: str = Field(..., description="Last word of the simplification")
     simplify3_id: str
     simplify3: str = Field(..., description="Child-friendly explanation")
+    simplify3_first_word: str = Field(..., description="First word of the simplification")
+    simplify3_last_word: str = Field(..., description="Last word of the simplification")
 
 
 class QuizResults(SimplifyResults):
