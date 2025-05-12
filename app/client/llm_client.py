@@ -5,8 +5,9 @@ from typing import Optional
 from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor
 
-from app.contant_manager import (chunking_prompt_ar, simplify_prompt_ar,
-                                 EMBEDDING_MODEL, question_generation_prompt_ar)
+from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
+
+from app.contant_manager import EMBEDDING_MODEL, paragraph_generator, simplify_prompt, question_generation_prompt
 from app.models.llm_response_model import (ChunkResults, TextProcessingResult,
                                            VideoText, QuizModel, QuizResponse)
 
@@ -32,8 +33,14 @@ class OpenAITextProcessor:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": chunking_prompt_ar},
-                    {"role": "user", "content": video}
+                    ChatCompletionSystemMessageParam(
+                        role="system",
+                        content=paragraph_generator
+                    ),
+                    ChatCompletionUserMessageParam(
+                        role="user",
+                        content=video
+                    )
                 ],
                 temperature=0,
                 response_format=ChunkResults
@@ -44,10 +51,7 @@ class OpenAITextProcessor:
                 video=video,
                 video_id=str(video_id),
                 paragraph=response.choices[0].message.parsed.chunks,
-                paragraph_id=str(paragraph_id),
-                input_tokens=response.usage.prompt_tokens,
-                output_tokens=response.usage.completion_tokens,
-                total_tokens=response.usage.total_tokens
+                paragraph_id=str(paragraph_id)
             )
         except Exception as e:
             raise e
@@ -56,41 +60,45 @@ class OpenAITextProcessor:
         """Submit the task to the thread pool for asynchronous execution"""
         return self.executor.submit(self.process_video_sync, video)
 
-    def simplify(self, paragraph: str) -> tuple[TextProcessingResult, int, int, int]:
+    def simplify(self, paragraph: str, language: str) -> TextProcessingResult | None:
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": paragraph},
-                    {"role": "user", "content": simplify_prompt_ar}
+                    ChatCompletionSystemMessageParam(
+                        role="system",
+                        content=simplify_prompt
+                    ),
+                    ChatCompletionUserMessageParam(
+                        role="user",
+                        content=f"##Script: {paragraph}\n##\n##Answer in {language} language:\n##\n"
+                    )
                 ],
                 temperature=0,
                 response_format=TextProcessingResult
             )
-            return (
-                response.choices[0].message.parsed,
-                response.usage.prompt_tokens,
-                response.usage.completion_tokens,
-                response.usage.total_tokens,
-            )
+            return response.choices[0].message.parsed
         except Exception as e:
             raise e
 
-    def generate_quiz(self, paragraph_content, paragraph_id: str) -> tuple[list[QuizModel], int, int, int]:
+    def generate_quiz(self, paragraph_content) -> list[QuizModel]:
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": question_generation_prompt_ar},
-                    {"role": "user", "content": paragraph_content}
+                    ChatCompletionSystemMessageParam(
+                        role="system",
+                        content=question_generation_prompt
+                    ),
+                    ChatCompletionUserMessageParam(
+                        role="user",
+                        content=paragraph_content
+                    )
                 ],
                 temperature=0,
                 response_format=QuizResponse
             )
-            tokens = response.usage.total_tokens
-            input_tokens = response.usage.prompt_tokens
-            output_tokens = response.usage.completion_tokens
-            return response.choices[0].message.parsed.quiz, input_tokens, output_tokens, tokens
+            return response.choices[0].message.parsed.quiz
         except Exception as e:
             raise e
 

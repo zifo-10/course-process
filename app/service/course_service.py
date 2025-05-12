@@ -13,13 +13,10 @@ from app.models.schema import SimplifyResponseSchema
 
 load_dotenv()
 llm_client = OpenAITextProcessor(os.getenv("OPENAI_API_KEY"), model="gpt-4o", max_workers=5)
-vectordb_client = QdrantDBClient(host='localhost', port=6333)
+vectordb_client = QdrantDBClient(host=os.getenv("QDRANT_URL"), port=6333)
 
 
-def chunk_course(videos) -> dict[str, int | list[VideoText] | Any]:
-    input_tokens = 0
-    output_tokens = 0
-    total_tokens = 0
+def chunk_course(videos) -> list[VideoText]:
 
     # Submit the sections to the thread pool with indices to preserve order
     futures = {i: llm_client.process_video(section) for i, section in enumerate(videos)}
@@ -28,26 +25,11 @@ def chunk_course(videos) -> dict[str, int | list[VideoText] | Any]:
     results: List[VideoText] = [None] * len(videos)
     for i, future in futures.items():
         result = future.result()
-        input_tokens += result.input_tokens
-        output_tokens += result.output_tokens
-        total_tokens += result.total_tokens
         results[i] = result
+    return results
 
-    print(f"Total input tokens: {input_tokens}")
-    print(f"Total output tokens: {output_tokens}")
-    print(f"Total tokens: {total_tokens}")
-    return {
-        "results": results,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens
-    }
-
-def simplify_paragraph(videos: List[VideoText]) -> dict[str, int | list[SimplifyResponseSchema] | Any]:
+def simplify_paragraph(videos: List[VideoText], language: str) -> list[SimplifyResponseSchema]:
     try:
-        input_tokens = 0
-        output_tokens = 0
-        total_tokens = 0
         simplify_results: List[SimplifyResponseSchema] = []
 
         print(f"Starting simplification for {len(videos)} videos...\n")
@@ -64,7 +46,7 @@ def simplify_paragraph(videos: List[VideoText]) -> dict[str, int | list[Simplify
 
             # Submit simplification tasks in parallel
             simplify_futures = {
-                i: llm_client.executor.submit(llm_client.simplify, paragraph)
+                i: llm_client.executor.submit(llm_client.simplify, paragraph, language)
                 for i, paragraph in enumerate(paragraph_list)
             }
 
@@ -74,16 +56,12 @@ def simplify_paragraph(videos: List[VideoText]) -> dict[str, int | list[Simplify
 
             for i, future in simplify_futures.items():
                 print(f"🧠 Simplifying paragraph {i + 1}/{len(paragraph_list)}")
-                simplified, in_tok, out_tok, total_tok = future.result()
-
-                input_tokens += in_tok
-                output_tokens += out_tok
-                total_tokens += total_tok
+                simplified = future.result()
 
                 print(f"🔍 Simplified result {i + 1}: {simplified}")
                 simplified = simplified.model_dump()
                 simplified["paragraph_id"] = video.paragraph_id
-                simplified["original_with_tashkeel_id"] = str(uuid.uuid4())
+                simplified["original_paragraph_id"] = str(uuid.uuid4())
                 simplified["simplify1_id"] = str(uuid.uuid4())
                 simplified["simplify2_id"] = str(uuid.uuid4())
                 simplified["simplify3_id"] = str(uuid.uuid4())
@@ -115,14 +93,8 @@ def simplify_paragraph(videos: List[VideoText]) -> dict[str, int | list[Simplify
             print(f"✅ Finished processing video {video_index + 1}\n")
 
         print("🎉 All videos processed.")
-        print(f"📊 Total tokens used → Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
 
-        return {
-            "results": simplify_results,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_tokens": total_tokens,
-        }
+        return simplify_results
 
 
     except Exception as e:
@@ -133,17 +105,17 @@ def get_similar_skills(paragraph: str, paragraph_id: str) -> list[SkillsModel]:
     try:
         embedding = llm_client.get_embed(paragraph)
         skills_result = vectordb_client.query(
-            collection_name='skills',
+            collection_name='skills-haj',
             vector=embedding,
             limit=1
         )
         skills_list: List[SkillsModel] = []
         for item in skills_result:
             skill_id = item.id
-            skill_en = item.payload.get('skill_en')
+            skill = item.payload.get('skills')
             skills_list.append(
                 SkillsModel(
-                    skill_en=skill_en,
+                    skill=skill,
                     skill_id=skill_id,
                     paragraph_id=paragraph_id
                 )
@@ -156,17 +128,17 @@ def get_similar_objectives(paragraph: str, paragraph_id: str) -> list[ObjectiveM
     try:
         embedding = llm_client.get_embed(paragraph)
         objectives_result = vectordb_client.query(
-            collection_name='objective',
+            collection_name='objectives-haj',
             vector=embedding,
             limit=2
         )
         objectives_list: List[ObjectiveModel] = []
         for item in objectives_result:
             objective_id = item.id
-            objective_en = item.payload.get('objective_en')
+            objective = item.payload.get('objectives')
             objectives_list.append(
                 ObjectiveModel(
-                    objective_en=objective_en,
+                    objective=objective,
                     objective_id=objective_id,
                     paragraph_id=paragraph_id
                 )
@@ -176,69 +148,38 @@ def get_similar_objectives(paragraph: str, paragraph_id: str) -> list[ObjectiveM
         raise e
 
 
-def generate_quiz(simplify_results: List[SimplifyResponseSchema]) -> dict:
-    input_tokens = 0
-    output_tokens = 0
-    total_tokens = 0
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List
 
+def generate_quiz(simplify_results: List[SimplifyResponseSchema], language: str) -> List[SimplifyResponseSchema]:
+    tasks = []
+    executor = ThreadPoolExecutor(max_workers=10)  # Adjust based on your system's capacity
+
+    def build_prompt(paragraph):
+        skills_list = [{"skill_id": s.skill_id, "skill": s.skill} for s in paragraph.skills]
+        objective_list = [{"objective_id": o.objective_id, "objective": o.objective} for o in paragraph.objectives]
+
+        return (
+            "# Available skills: " + str(skills_list) + "\n\n"
+            "# Available objectives: " + str(objective_list) + "\n\n"
+            "# Paragraph: " + paragraph.simplified.original_paragraph + "\n"
+            f"Answer in {language} language:\n"
+        )
+
+    # Collect all tasks
     for video in simplify_results:
         for paragraph in video.paragraph:
-            skills_list = []
-            objective_list = []
+            prompt = build_prompt(paragraph)
+            print(f"📝 Generating quiz for paragraph: {paragraph.simplified.original_paragraph}")
+            future = executor.submit(llm_client.generate_quiz, prompt)
+            tasks.append((future, paragraph))  # preserve paragraph reference
 
-            for skills in paragraph.skills:
-                skills_list.append({
-                    "skill_id": skills.skill_id,
-                    "skill_en": skills.skill_en,
-                })
-            for objective in paragraph.objectives:
-                objective_list.append({
-                    "objective_id": objective.objective_id,
-                    "objective_en": objective.objective_en,
-                })
+    # Apply results in the original order
+    for future, paragraph in tasks:
+        paragraph.quiz = future.result()
 
-            print(f"📝 Generating quiz for paragraph: {paragraph.simplified.original_with_tashkeel}")
+    executor.shutdown(wait=True)
+    return simplify_results
 
-            paragraph_with_skills = (
-                "# Available skills: " + str(skills_list) + "\n\n" +
-                "# Available objectives: " + str(objective_list) + "\n\n" +
-                "# Paragraph: " + paragraph.simplified.original_with_tashkeel + "\n"
-            )
-
-            quiz, in_tokens, out_tokens, tokens = llm_client.generate_quiz(paragraph_with_skills, paragraph_id=paragraph.paragraph_id)
-
-            input_tokens += in_tokens
-            output_tokens += out_tokens
-            total_tokens += tokens
-
-            quiz_with_paragraph_id = []
-
-            for q in quiz:
-                q.question_id = str(uuid.uuid4())
-
-                for skills in q.question_skills_and_objective:
-                    skills.question_id = q.question_id
-                for ans in q.answer:
-                    ans.question_id = q.question_id
-                for alter in q.alternative_questions:
-                    alter.question_id = str(uuid.uuid4())
-                    for ans in alter.answer:
-                        ans.question_id = alter.question_id
-
-                q = q.model_dump()
-                q["paragraph_id"] = paragraph.paragraph_id
-                quiz_with_paragraph_id.append(q)
-
-            print(f"✅ Quiz generated: {quiz}")
-            paragraph.quiz = quiz_with_paragraph_id
-
-    print(f"📊 Quiz Token Usage → Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
-
-    return {
-        "results": simplify_results,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-    }
 
 

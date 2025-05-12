@@ -10,40 +10,30 @@ from app.utils.text_spillter import read_docx
 
 app = FastAPI()
 
-
-@app.post("/prepare-learning-kit/")
-async def upload_docx(file: UploadFile = File(...)) -> LearningKitResponse:
+@app.post("/process_skills_obj")
+async def process_skills_obj(skills_list: List[str], objective_list: List[str]) -> dict:
     try:
-        total_input_tokens = 0
-        total_output_tokens = 0
-        total_tokens = 0
+        # For example, you can save them to a database or perform some operations
+        return {"skills": skills_list, "objectives": objective_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/prepare-learning-kit/{language}")
+async def upload_docx(language: str, file: UploadFile = File(...)) -> LearningKitResponse:
+    try:
 
         file_content = BytesIO(await file.read())
         videos = read_docx(file_content)
         chunk_results = chunk_course(videos)
 
-        total_input_tokens += chunk_results['input_tokens']
-        total_output_tokens += chunk_results['output_tokens']
-        total_tokens += chunk_results['total_tokens']
+        simplify_result = simplify_paragraph(chunk_results, language)
 
-        simplify_result = simplify_paragraph(chunk_results['results'])
-
-        total_input_tokens += simplify_result['input_tokens']
-        total_output_tokens += simplify_result['output_tokens']
-        total_tokens += simplify_result['total_tokens']
-
-        quiz_result = generate_quiz(simplify_result['results'])
-
-        total_input_tokens += quiz_result['input_tokens']
-        total_output_tokens += quiz_result['output_tokens']
-        total_tokens += quiz_result['total_tokens']
+        quiz_result = generate_quiz(simplify_result, language)
 
         # ✅ Create final response
         final_response = LearningKitResponse(
-            results=quiz_result['results'],
-            total_input_tokens=total_input_tokens,
-            total_output_tokens=total_output_tokens,
-            total_tokens=total_tokens
+            results=quiz_result,
         )
 
         # ✅ Save to JSON file
